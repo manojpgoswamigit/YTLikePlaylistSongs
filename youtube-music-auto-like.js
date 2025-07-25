@@ -72,30 +72,64 @@ class YouTubeMusicAutoLike {
     getLikeButtons() {
         // Multiple selectors to handle different YouTube Music versions
         const selectors = [
+            // Current YouTube Music selectors
+            'ytmusic-responsive-list-item-renderer tp-yt-paper-icon-button[aria-label="Like"]',
+            'ytmusic-responsive-list-item-renderer button[aria-label="Like"]',
+            'ytmusic-responsive-list-item-renderer yt-icon-button[aria-label="Like"]',
+            // General selectors
             'tp-yt-paper-icon-button[aria-label="Like"]',
             'button[aria-label="Like"]',
             'yt-icon-button[aria-label="Like"]',
-            '[data-tooltip-text="Like"]'
+            '[data-tooltip-text="Like"]',
+            // Alternative patterns
+            '[aria-label*="Like"]:not([aria-label*="Unlike"]):not([aria-label*="Remove"])',
+            'button[title="Like"]',
+            'tp-yt-paper-icon-button[title="Like"]'
         ];
         
         let buttons = [];
+        let usedSelector = '';
+        
         for (const selector of selectors) {
             const foundButtons = document.querySelectorAll(selector);
             if (foundButtons.length > 0) {
                 buttons = Array.from(foundButtons);
-                this.log(`Found ${buttons.length} like buttons using selector: ${selector}`, 'debug');
+                usedSelector = selector;
+                this.log(`Found ${buttons.length} potential like buttons using selector: ${selector}`, 'debug');
                 break;
             }
         }
         
+        if (buttons.length === 0) {
+            this.log('No like buttons found with any selector. Checking page structure...', 'debug');
+            
+            // Debug: Check what buttons exist
+            const allButtons = document.querySelectorAll('button, tp-yt-paper-icon-button, yt-icon-button');
+            this.log(`Total buttons found: ${allButtons.length}`, 'debug');
+            
+            // Sample some button attributes
+            Array.from(allButtons).slice(0, 5).forEach((btn, i) => {
+                this.log(`Button ${i}: aria-label="${btn.getAttribute('aria-label')}", title="${btn.getAttribute('title')}"`, 'debug');
+            });
+        }
+        
         // Filter out already liked buttons
-        return buttons.filter(button => {
+        const unlikedButtons = buttons.filter(button => {
             const isPressed = button.getAttribute('aria-pressed') === 'true';
             const isDisabled = button.disabled || button.getAttribute('disabled') !== null;
-            const isAlreadyLiked = button.getAttribute('aria-label')?.includes('Remove from liked');
+            const ariaLabel = button.getAttribute('aria-label') || '';
+            const isAlreadyLiked = ariaLabel.includes('Remove from liked') || 
+                                 ariaLabel.includes('Unlike') || 
+                                 ariaLabel.includes('Dislike');
             
             return !isPressed && !isDisabled && !isAlreadyLiked;
         });
+        
+        if (buttons.length > 0 && unlikedButtons.length === 0) {
+            this.log(`Found ${buttons.length} like buttons but all appear to be already liked`, 'debug');
+        }
+        
+        return unlikedButtons;
     }
 
     // Like all currently visible songs
@@ -155,26 +189,46 @@ class YouTubeMusicAutoLike {
 
     // Find the correct scrollable container for YouTube Music
     getScrollContainer() {
-        // Try different possible scroll containers for YouTube Music
+        // Updated selectors based on current YouTube Music structure
         const selectors = [
+            // Primary scrollable container in YouTube Music playlists
+            'ytmusic-section-list-renderer.scroller',
+            'ytmusic-section-list-renderer',
+            // Contents within the playlist shelf
+            'ytmusic-playlist-shelf-renderer #contents',
+            // General contents containers
+            'ytmusic-two-column-browse-results-renderer #contents',
+            'ytmusic-browse-response #contents',
+            '#contents.style-scope.ytmusic-section-list-renderer',
             '#contents',
+            // Fallback selectors
             '.playlist-items',
             '.ytmusic-playlist-shelf-renderer',
             '[role="main"]',
             '.main-panel',
-            '#main-panel'
+            '#main-panel',
+            // App layout container
+            'ytmusic-app-layout#layout'
         ];
         
         for (const selector of selectors) {
             const element = document.querySelector(selector);
-            if (element && element.scrollHeight > element.clientHeight) {
-                this.log(`Using scroll container: ${selector}`, 'debug');
-                return element;
+            if (element) {
+                // Check if element is actually scrollable
+                const isScrollable = element.scrollHeight > element.clientHeight || 
+                                   element.scrollHeight > element.offsetHeight;
+                
+                if (isScrollable) {
+                    this.log(`Using scroll container: ${selector} (scrollHeight: ${element.scrollHeight}, clientHeight: ${element.clientHeight})`, 'debug');
+                    return element;
+                }
+                
+                this.log(`Found element for ${selector} but not scrollable`, 'debug');
             }
         }
         
-        // Fallback to window/document
-        this.log('Using window as scroll container', 'debug');
+        // Fallback to window/document if no container found
+        this.log('No scrollable container found, using window', 'debug');
         return null;
     }
 
@@ -196,31 +250,71 @@ class YouTubeMusicAutoLike {
         // Get current scroll position
         const initialScrollPos = scrollContainer ? scrollContainer.scrollTop : window.pageYOffset;
         
-        // Try multiple scroll methods for better compatibility
+        // Get initial number of songs for comparison
+        const initialSongCount = this.getLikeButtons().length;
+        
+        // Try multiple scroll methods for better compatibility with YouTube Music
         if (scrollContainer) {
-            // Scroll the container element
-            scrollContainer.scrollTop += this.config.scrollDistance;
-            // Also try scrollIntoView on the last visible element
-            const lastElement = scrollContainer.querySelector('*:last-child');
-            if (lastElement) {
-                lastElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            // Method 1: Scroll the container element
+            const maxScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+            const currentScrollTop = scrollContainer.scrollTop;
+            const scrollAmount = Math.min(this.config.scrollDistance, maxScrollTop - currentScrollTop);
+            
+            if (scrollAmount > 0) {
+                scrollContainer.scrollTop += scrollAmount;
+                this.log(`Scrolled container by ${scrollAmount}px`, 'debug');
+            }
+            
+            // Method 2: Try scrollIntoView on the last visible song item
+            const lastSongItem = scrollContainer.querySelector('ytmusic-responsive-list-item-renderer:last-of-type');
+            if (lastSongItem) {
+                lastSongItem.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'end',
+                    inline: 'nearest'
+                });
+                this.log('Scrolled last song item into view', 'debug');
+            }
+            
+            // Method 3: Force scroll to bottom if we're close
+            if (currentScrollTop > maxScrollTop * 0.9) {
+                scrollContainer.scrollTop = maxScrollTop;
+                this.log('Forced scroll to bottom of container', 'debug');
             }
         } else {
-            // Scroll the window
-            window.scrollBy({ top: this.config.scrollDistance, behavior: 'smooth' });
-            // Also try scrolling to bottom
-            window.scrollTo({ 
-                top: document.body.scrollHeight, 
-                behavior: 'smooth' 
-            });
+            // Window scrolling methods
+            const maxWindowScroll = Math.max(
+                document.body.scrollHeight,
+                document.documentElement.scrollHeight
+            ) - window.innerHeight;
+            
+            const currentWindowScroll = window.pageYOffset;
+            const scrollAmount = Math.min(this.config.scrollDistance, maxWindowScroll - currentWindowScroll);
+            
+            if (scrollAmount > 0) {
+                window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+                this.log(`Scrolled window by ${scrollAmount}px`, 'debug');
+            }
+            
+            // Try scrolling to the last song element
+            const lastSongItem = document.querySelector('ytmusic-responsive-list-item-renderer:last-of-type');
+            if (lastSongItem) {
+                lastSongItem.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'end',
+                    inline: 'nearest'
+                });
+                this.log('Scrolled last song item into view (window)', 'debug');
+            }
         }
         
         // Wait for content to load
         await this.delay(this.config.loadWaitTime);
         
-        // Check if we actually scrolled
+        // Check if we actually scrolled (with a small delay to account for smooth scrolling)
+        await this.delay(500); // Additional delay for smooth scroll animation
         const currentScrollPos = scrollContainer ? scrollContainer.scrollTop : window.pageYOffset;
-        const didScroll = currentScrollPos > initialScrollPos;
+        const didScroll = Math.abs(currentScrollPos - initialScrollPos) > 10; // Allow for small differences
         
         // Check for new content
         let newHeight;
@@ -231,9 +325,12 @@ class YouTubeMusicAutoLike {
         }
         
         const hasNewContent = newHeight > initialHeight;
-        const hasNewSongs = this.getLikeButtons().length > 0;
+        const newSongCount = this.getLikeButtons().length;
+        const hasNewSongs = newSongCount > initialSongCount;
         
         this.stats.scrollAttempts++;
+        
+        this.log(`Scroll results: didScroll=${didScroll} (${initialScrollPos}px -> ${currentScrollPos}px), hasNewContent=${hasNewContent} (${initialHeight}px -> ${newHeight}px), hasNewSongs=${hasNewSongs} (${initialSongCount} -> ${newSongCount})`, 'debug');
         
         if (hasNewContent) {
             this.log('New content loaded after scrolling', 'debug');
@@ -243,8 +340,8 @@ class YouTubeMusicAutoLike {
             this.log('Failed to scroll - may have reached end', 'debug');
         }
         
-        // Return true if we found new content OR new songs appeared
-        return hasNewContent || hasNewSongs;
+        // Return true if we found new content OR new songs appeared OR we successfully scrolled
+        return hasNewContent || hasNewSongs || didScroll;
     }
 
     // Check if we should continue processing
@@ -386,6 +483,100 @@ class YouTubeMusicAutoLike {
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+
+    // Debug method to analyze current page structure
+    debugPageStructure() {
+        console.log('\n🔍 YouTube Music Page Structure Analysis:');
+        console.log('==========================================');
+        
+        // Check for main containers
+        const containers = [
+            'ytmusic-app-layout#layout',
+            'ytmusic-section-list-renderer.scroller',
+            'ytmusic-section-list-renderer',
+            'ytmusic-playlist-shelf-renderer',
+            'ytmusic-two-column-browse-results-renderer',
+            '#contents'
+        ];
+        
+        containers.forEach(selector => {
+            const element = document.querySelector(selector);
+            if (element) {
+                console.log(`✓ Found: ${selector}`);
+                console.log(`  - scrollHeight: ${element.scrollHeight}px`);
+                console.log(`  - clientHeight: ${element.clientHeight}px`);
+                console.log(`  - scrollTop: ${element.scrollTop}px`);
+                console.log(`  - isScrollable: ${element.scrollHeight > element.clientHeight}`);
+            } else {
+                console.log(`✗ Not found: ${selector}`);
+            }
+        });
+        
+        // Check song items
+        const songItems = document.querySelectorAll('ytmusic-responsive-list-item-renderer');
+        console.log(`\n📄 Song items found: ${songItems.length}`);
+        
+        // Check like buttons
+        const likeButtons = this.getLikeButtons();
+        console.log(`❤️ Unliked songs: ${likeButtons.length}`);
+        
+        console.log('==========================================\n');
+        
+        return {
+            containers: containers.map(selector => ({
+                selector,
+                found: !!document.querySelector(selector),
+                element: document.querySelector(selector)
+            })),
+            songCount: songItems.length,
+            likeButtonCount: likeButtons.length
+        };
+    }
+
+    // Debug method to analyze like buttons specifically
+    debugLikeButtons() {
+        console.log('\n❤️ Like Button Analysis:');
+        console.log('========================');
+        
+        // Check all possible button types
+        const buttonTypes = [
+            'button',
+            'tp-yt-paper-icon-button', 
+            'yt-icon-button',
+            '[role="button"]'
+        ];
+        
+        buttonTypes.forEach(type => {
+            const buttons = document.querySelectorAll(type);
+            console.log(`${type}: ${buttons.length} found`);
+        });
+        
+        // Look for buttons with "like" in attributes
+        const likeRelated = document.querySelectorAll('[aria-label*="Like"], [title*="Like"], [aria-label*="like"], [title*="like"]');
+        console.log(`\nButtons with "like" in attributes: ${likeRelated.length}`);
+        
+        // Sample the first few like-related buttons
+        Array.from(likeRelated).slice(0, 10).forEach((btn, i) => {
+            console.log(`  ${i}: aria-label="${btn.getAttribute('aria-label')}", title="${btn.getAttribute('title')}", pressed="${btn.getAttribute('aria-pressed')}"`);
+        });
+        
+        // Test current detection
+        const detectedButtons = this.getLikeButtons();
+        console.log(`\n✓ Currently detected unliked buttons: ${detectedButtons.length}`);
+        
+        // Show song containers
+        const songContainers = document.querySelectorAll('ytmusic-responsive-list-item-renderer');
+        console.log(`📄 Song containers: ${songContainers.length}`);
+        
+        console.log('========================\n');
+        
+        return {
+            totalButtons: document.querySelectorAll('button, tp-yt-paper-icon-button, yt-icon-button').length,
+            likeRelatedButtons: likeRelated.length,
+            detectedLikeButtons: detectedButtons.length,
+            songContainers: songContainers.length
+        };
+    }
 }
 
 // Initialize and start the auto-liker
@@ -395,10 +586,10 @@ console.log('📋 Creating auto-liker with default settings...');
 const autoLiker = new YouTubeMusicAutoLike({
     likeDelayMin: 1200,   // Minimum 1.2 seconds between likes
     likeDelayMax: 2300,   // Maximum 2.3 seconds between likes
-    scrollDelay: 4000,    // 4 seconds between scroll cycles (reduced for better performance)
-    scrollDistance: 800,  // Scroll 800px at a time (more manageable chunks)
-    loadWaitTime: 3000,   // Wait 3 seconds for content to load after scrolling
-    maxScrollAttempts: 50, // Maximum 50 scroll attempts
+    scrollDelay: 3000,    // 3 seconds between scroll cycles (reduced for better performance)
+    scrollDistance: 600,  // Scroll 600px at a time (optimized for YouTube Music)
+    loadWaitTime: 4000,   // Wait 4 seconds for content to load after scrolling (increased for YouTube Music)
+    maxScrollAttempts: 75, // Maximum 75 scroll attempts (increased due to better detection)
     verbose: true         // Enable detailed logging
 });
 
@@ -411,4 +602,6 @@ console.log('• To stop the script: autoLiker.stop()');
 console.log('• To check status: autoLiker.getStatus()');  
 console.log('• To start again: autoLiker.start()');
 console.log('• To test scrolling: autoLiker.scrollToLoadMore()');
-console.log('• To like visible songs: autoLiker.likeVisibleSongs()'); 
+console.log('• To like visible songs: autoLiker.likeVisibleSongs()');
+console.log('• To debug page structure: autoLiker.debugPageStructure()');
+console.log('• To debug like buttons: autoLiker.debugLikeButtons()'); 
