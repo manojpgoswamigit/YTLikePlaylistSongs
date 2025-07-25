@@ -4,15 +4,18 @@ Automatically like all songs in a YouTube Music playlist with this browser conso
 
 ## ✨ Features
 
-- **Smart Detection**: Automatically finds and likes only unliked songs
+- **Smart Detection**: Automatically finds and likes only unliked songs using multiple selector strategies
 - **Progress Tracking**: Real-time logging with song titles and progress counts
-- **Configurable Delays**: Customize timing to avoid overwhelming YouTube's servers
+- **Randomized Delays**: Natural timing with configurable random delays to avoid detection
+- **Advanced Scrolling**: Intelligent scroll detection with multiple fallback methods
 - **Safety Features**: 
   - Maximum scroll limits to prevent infinite loops
-  - Graceful error handling
+  - Graceful error handling and retry logic
   - Manual stop functionality
+  - Smart detection when reaching playlist end
 - **Multiple Selector Support**: Works across different YouTube Music interface versions
 - **Detailed Statistics**: Shows total likes, runtime, and scroll attempts when complete
+- **Debug Tools**: Built-in diagnostics for troubleshooting
 
 ## 🚀 Quick Start
 
@@ -46,6 +49,14 @@ autoLiker.getStatus()
 
 // Start the script again (if stopped)
 autoLiker.start()
+
+// Test individual functions
+autoLiker.scrollToLoadMore()        // Test scrolling
+autoLiker.likeVisibleSongs()        // Like currently visible songs
+
+// Debug tools (for troubleshooting)
+autoLiker.debugPageStructure()       // Analyze page layout
+autoLiker.debugLikeButtons()         // Analyze like button detection
 ```
 
 ## ⚙️ Configuration
@@ -54,12 +65,13 @@ You can customize the script behavior by modifying the configuration when creati
 
 ```javascript
 const autoLiker = new YouTubeMusicAutoLike({
-    likeDelay: 1500,        // Milliseconds between individual likes
-    scrollDelay: 6000,      // Milliseconds between scroll cycles
-    scrollDistance: 1000,   // Pixels to scroll each time
-    maxScrollAttempts: 50,  // Maximum scrolls before stopping
-    loadWaitTime: 2000,     // Wait time after scrolling for content to load
-    verbose: true           // Enable detailed logging
+    likeDelayMin: 1200,        // Minimum delay between likes (milliseconds)
+    likeDelayMax: 2300,        // Maximum delay between likes (milliseconds)
+    scrollDelay: 3000,         // Milliseconds between scroll cycles
+    scrollDistance: 600,       // Pixels to scroll each time
+    maxScrollAttempts: 75,     // Maximum scrolls before stopping
+    loadWaitTime: 4000,        // Wait time after scrolling for content to load
+    verbose: true              // Enable detailed logging
 });
 ```
 
@@ -67,12 +79,17 @@ const autoLiker = new YouTubeMusicAutoLike({
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `likeDelay` | 1500ms | Delay between liking individual songs |
-| `scrollDelay` | 6000ms | Delay between scroll cycles |
-| `scrollDistance` | 1000px | How far to scroll each time |
-| `maxScrollAttempts` | 50 | Maximum scroll attempts to prevent infinite loops |
-| `loadWaitTime` | 2000ms | Time to wait for new content after scrolling |
+| `likeDelayMin` | 1200ms | Minimum delay between liking individual songs |
+| `likeDelayMax` | 2300ms | Maximum delay between liking individual songs |
+| `scrollDelay` | 3000ms | Delay between scroll cycles |
+| `scrollDistance` | 600px | How far to scroll each time (optimized for YouTube Music) |
+| `maxScrollAttempts` | 75 | Maximum scroll attempts to prevent infinite loops |
+| `loadWaitTime` | 4000ms | Time to wait for new content after scrolling |
 | `verbose` | true | Enable detailed console logging |
+
+### 🎯 Smart Delay System
+
+The script uses **randomized delays** between `likeDelayMin` and `likeDelayMax` to make the automation appear more natural. Each like action waits a random amount of time within your specified range, making it less likely to be detected as automated behavior.
 
 ## 📊 Example Output
 
@@ -83,8 +100,11 @@ const autoLiker = new YouTubeMusicAutoLike({
 [10:30:15] YT Auto-Like: ℹ️ 🚀 Starting YouTube Music Auto-Like script...
 [10:30:15] YT Auto-Like: ℹ️ 💡 You can stop the script anytime by running: autoLiker.stop()
 [10:30:15] YT Auto-Like: ℹ️ Found 12 songs to like
+[10:30:16] YT Auto-Like: 🔍 Waiting 1.8s before next like...
 [10:30:16] YT Auto-Like: ✅ Liked: "Song Title 1" (1 total)
+[10:30:18] YT Auto-Like: 🔍 Waiting 2.1s before next like...
 [10:30:18] YT Auto-Like: ✅ Liked: "Song Title 2" (2 total)
+[10:30:21] YT Auto-Like: 🔍 Scrolling to load more content... (attempt 1)
 ...
 ==================================================
 [10:35:22] YT Auto-Like: ✅ 🎉 Script completed!
@@ -92,45 +112,71 @@ const autoLiker = new YouTubeMusicAutoLike({
 [10:35:22] YT Auto-Like: ℹ️ ⏱️ Runtime: 307 seconds
 [10:35:22] YT Auto-Like: ℹ️ 📜 Scroll attempts: 12
 ==================================================
+All done! Your playlist songs have been liked! ❤️
 ```
 
 ## 🛡️ Safety Features
 
-- **Rate Limiting**: Built-in delays prevent overwhelming YouTube's servers
+- **Smart Rate Limiting**: Randomized delays between actions prevent overwhelming YouTube's servers
+- **Intelligent Scrolling**: Multiple scroll detection methods ensure reliable content loading
 - **Maximum Attempts**: Prevents infinite scrolling with configurable limits
 - **Error Handling**: Gracefully handles network issues and DOM changes
 - **Manual Control**: Can be stopped at any time
-- **Smart Detection**: Only likes songs that aren't already liked
+- **End Detection**: Automatically stops when no more content can be loaded
+- **Retry Logic**: Multiple attempts to find content before giving up
+
+## 🔧 Debug Tools
+
+The script includes built-in diagnostic tools for troubleshooting:
+
+```javascript
+// Analyze the current page structure
+autoLiker.debugPageStructure()
+
+// Analyze like button detection
+autoLiker.debugLikeButtons()
+```
+
+These tools help identify issues when YouTube Music updates their interface or when the script isn't working as expected.
 
 ## ❗ Troubleshooting
 
 ### "No more songs to like" immediately
 - **Cause**: All songs in the playlist are already liked, or YouTube changed their DOM structure
-- **Solution**: Check if songs are already liked, or try refreshing the page
+- **Solution**: Use `autoLiker.debugLikeButtons()` to check button detection, or try refreshing the page
 
 ### Script stops working after YouTube update
 - **Cause**: YouTube updated their interface and selectors changed
-- **Solution**: The script includes multiple selectors for compatibility, but may need updates for major changes
+- **Solution**: The script includes multiple selectors for compatibility, but may need updates for major changes. Use debug tools to analyze the current page structure.
 
 ### "Maximum scroll attempts reached"
 - **Cause**: Very large playlist or slow internet connection
-- **Solution**: Increase `maxScrollAttempts` in the configuration
+- **Solution**: Increase `maxScrollAttempts` in the configuration or increase `loadWaitTime` for slower connections
 
 ### Script runs too fast/slow
-- **Cause**: Default timing doesn't match your needs
-- **Solution**: Adjust `likeDelay` and `scrollDelay` in the configuration
+- **Cause**: Default timing doesn't match your needs or network conditions
+- **Solution**: Adjust `likeDelayMin`, `likeDelayMax`, `scrollDelay`, and `loadWaitTime` in the configuration
 
-### Console shows errors
-- **Cause**: Network issues or YouTube interface changes
-- **Solution**: Check your internet connection and try refreshing the page
+### Console shows errors or no progress
+- **Cause**: Network issues, YouTube interface changes, or browser compatibility
+- **Solution**: 
+  1. Check your internet connection
+  2. Try refreshing the page
+  3. Use `autoLiker.debugPageStructure()` to analyze the page
+  4. Increase `loadWaitTime` for slower loading
+
+### Script can't find like buttons
+- **Cause**: YouTube Music interface update or unexpected page structure
+- **Solution**: Use `autoLiker.debugLikeButtons()` to see what buttons are detected and their attributes
 
 ## 📝 How It Works
 
-1. **Detection**: Scans the page for "Like" buttons that haven't been pressed
-2. **Liking**: Clicks each button with configurable delays
-3. **Scrolling**: Automatically scrolls down to load more songs
-4. **Monitoring**: Tracks progress and detects when all songs are processed
-5. **Completion**: Shows final statistics and stops automatically
+1. **Multi-Selector Detection**: Uses multiple CSS selectors to find like buttons across different YouTube Music versions
+2. **Smart Filtering**: Identifies only unliked songs by checking button states and aria labels
+3. **Natural Timing**: Implements randomized delays between actions to appear more human-like
+4. **Advanced Scrolling**: Uses multiple scroll methods and containers for reliable content loading
+5. **Progress Monitoring**: Tracks scrolling success and detects when no new content is available
+6. **Completion Detection**: Automatically stops when reaching the end of the playlist
 
 ## ⚠️ Important Notes
 
@@ -138,6 +184,7 @@ const autoLiker = new YouTubeMusicAutoLike({
 - **Account Safety**: Only use on your own playlists and account
 - **Browser Compatibility**: Works in all modern browsers (Chrome, Firefox, Safari, Edge)
 - **No Installation Required**: Pure JavaScript - runs directly in browser console
+- **Natural Behavior**: Random delays and smart detection help avoid automation detection
 
 ## 🤝 Contributing
 
