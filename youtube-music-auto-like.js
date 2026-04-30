@@ -577,6 +577,19 @@ class YouTubeMusicAutoLike {
             songContainers: songContainers.length
         };
     }
+
+    // Usage instructions
+    help() {
+        console.log('\n💡 CONTROLS:');
+        console.log('• To stop the script: autoLiker.stop()');
+        console.log('• To check status: autoLiker.getStatus()');  
+        console.log('• To start again: autoLiker.start()');
+        console.log('• To test scrolling: autoLiker.scrollToLoadMore()');
+        console.log('• To like visible songs: autoLiker.likeVisibleSongs()');
+        console.log('• To debug page structure: autoLiker.debugPageStructure()');
+        console.log('• To debug like buttons: autoLiker.debugLikeButtons()'); 
+        console.log('• To print these instructions again: autoLiker.help()');
+    }
 }
 
 // Initialize and start the auto-liker
@@ -593,15 +606,8 @@ const autoLiker = new YouTubeMusicAutoLike({
     verbose: true         // Enable detailed logging
 });
 
+// Usage instructions
+autoLiker.help();
+
 // Start the process
 autoLiker.start();
-
-// Usage instructions
-console.log('\n💡 CONTROLS:');
-console.log('• To stop the script: autoLiker.stop()');
-console.log('• To check status: autoLiker.getStatus()');  
-console.log('• To start again: autoLiker.start()');
-console.log('• To test scrolling: autoLiker.scrollToLoadMore()');
-console.log('• To like visible songs: autoLiker.likeVisibleSongs()');
-console.log('• To debug page structure: autoLiker.debugPageStructure()');
-console.log('• To debug like buttons: autoLiker.debugLikeButtons()'); 
