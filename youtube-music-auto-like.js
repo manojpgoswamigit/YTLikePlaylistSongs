@@ -169,8 +169,9 @@ class YouTubeMusicAutoLike {
                     button.click();
                     likedCount++;
                     this.stats.totalLiked++;
+                    let remainingCount = likeButtons.length - (i + 1);
                     
-                    this.log(`Liked: "${songTitle}" (${this.stats.totalLiked} total)`, 'success');
+                    this.log(`Liked: "${songTitle}" (${this.stats.totalLiked} total, ${remainingCount} to go)`, 'success');
                     
                     // Wait between clicks with random delay to avoid overwhelming the server
                     if (i < likeButtons.length - 1) {
