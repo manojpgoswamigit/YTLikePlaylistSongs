@@ -1,0 +1,7 @@
+# Local documentation, design docs, and test artifacts
+docs/
+
+# Tooling and session caches
+.playwright-cli/
+node_modules/
+*.log

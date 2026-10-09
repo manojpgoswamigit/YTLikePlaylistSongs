@@ -68,23 +68,12 @@ class YouTubeMusicAutoLike {
         }
     }
 
-    // Get all like buttons that haven't been liked yet
+    // Get all like buttons that haven't been liked yet (excluding suggestions/recommendations)
     getLikeButtons() {
-        // Multiple selectors to handle different YouTube Music versions
+        // Prioritize playlist shelf to avoid liking songs from suggestions/shelves
         const selectors = [
-            // Current YouTube Music selectors
-            'ytmusic-responsive-list-item-renderer tp-yt-paper-icon-button[aria-label="Like"]',
-            'ytmusic-responsive-list-item-renderer button[aria-label="Like"]',
-            'ytmusic-responsive-list-item-renderer yt-icon-button[aria-label="Like"]',
-            // General selectors
-            'tp-yt-paper-icon-button[aria-label="Like"]',
-            'button[aria-label="Like"]',
-            'yt-icon-button[aria-label="Like"]',
-            '[data-tooltip-text="Like"]',
-            // Alternative patterns
-            '[aria-label*="Like"]:not([aria-label*="Unlike"]):not([aria-label*="Remove"])',
-            'button[title="Like"]',
-            'tp-yt-paper-icon-button[title="Like"]'
+            'ytmusic-playlist-shelf-renderer ytmusic-responsive-list-item-renderer button[aria-label="Like"]',
+            'ytmusic-responsive-list-item-renderer button[aria-label="Like"]'
         ];
         
         let buttons = [];
@@ -104,7 +93,7 @@ class YouTubeMusicAutoLike {
             this.log('No like buttons found with any selector. Checking page structure...', 'debug');
             
             // Debug: Check what buttons exist
-            const allButtons = document.querySelectorAll('button, tp-yt-paper-icon-button, yt-icon-button');
+            const allButtons = document.querySelectorAll('button');
             this.log(`Total buttons found: ${allButtons.length}`, 'debug');
             
             // Sample some button attributes
@@ -113,8 +102,19 @@ class YouTubeMusicAutoLike {
             });
         }
         
-        // Filter out already liked buttons
+        // Filter out already liked buttons and strictly exclude suggestions/recommendations
         const unlikedButtons = buttons.filter(button => {
+            // Exclude buttons from suggestions/recommendations shelves
+            if (button.closest('ytmusic-shelf-renderer')) {
+                return false;
+            }
+
+            // If a playlist shelf exists, strictly only include songs inside it
+            const playlistShelf = document.querySelector('ytmusic-playlist-shelf-renderer');
+            if (playlistShelf && !playlistShelf.contains(button)) {
+                return false;
+            }
+
             const isPressed = button.getAttribute('aria-pressed') === 'true';
             const isDisabled = button.disabled || button.getAttribute('disabled') !== null;
             const ariaLabel = button.getAttribute('aria-label') || '';
@@ -126,10 +126,43 @@ class YouTubeMusicAutoLike {
         });
         
         if (buttons.length > 0 && unlikedButtons.length === 0) {
-            this.log(`Found ${buttons.length} like buttons but all appear to be already liked`, 'debug');
+            this.log(`Found ${buttons.length} like buttons but all appear to be already liked or in suggestions`, 'debug');
         }
         
         return unlikedButtons;
+    }
+
+    // Extract song title from song item for logging
+    // ponytail: DOM scraper targets YouTube Music's ytmusic-responsive-list-item-renderer and yt-formatted-string.title.
+    getSongTitle(button) {
+        try {
+            // Find parent song container
+            const songElement = button.closest('ytmusic-responsive-list-item-renderer');
+
+            if (!songElement) {
+                this.log('Could not find ytmusic-responsive-list-item-renderer container for like button', 'debug');
+                return 'Unknown Song';
+            }
+
+            // Target exact song title element within the container
+            const titleElement = songElement.querySelector('.title-column yt-formatted-string.title') ||
+                                 songElement.querySelector('yt-formatted-string.title');
+
+            if (titleElement) {
+                const title = (titleElement.getAttribute('title') || titleElement.textContent || '')
+                    .trim()
+                    .replace(/\s+/g, ' ');
+                if (title) {
+                    return title;
+                }
+            }
+
+            this.log('Found song container but could not extract title from yt-formatted-string.title', 'debug');
+        } catch (error) {
+            this.log(`Error extracting song title: ${error.message}`, 'debug');
+        }
+
+        return 'Unknown Song';
     }
 
     // Like all currently visible songs
@@ -151,20 +184,7 @@ class YouTubeMusicAutoLike {
             try {
                 // Double-check button is still valid
                 if (button.getAttribute('aria-pressed') === 'false' && !button.disabled) {
-                    // Find song title for better logging
-                    const songElement = button.closest('[data-testid*="song"]') || 
-                                      button.closest('.song-info') ||
-                                      button.closest('.ytmusic-responsive-list-item-renderer');
-                    
-                    let songTitle = 'Unknown Song';
-                    if (songElement) {
-                        const titleElement = songElement.querySelector('[title]') || 
-                                           songElement.querySelector('a[href*="watch"]') ||
-                                           songElement.querySelector('.song-title');
-                        if (titleElement) {
-                            songTitle = titleElement.textContent?.trim() || titleElement.title || 'Unknown Song';
-                        }
-                    }
+                    const songTitle = this.getSongTitle(button);
                     
                     button.click();
                     likedCount++;
@@ -265,15 +285,18 @@ class YouTubeMusicAutoLike {
                 this.log(`Scrolled container by ${scrollAmount}px`, 'debug');
             }
             
-            // Method 2: Try scrollIntoView on the last visible song item
-            const lastSongItem = scrollContainer.querySelector('ytmusic-responsive-list-item-renderer:last-of-type');
+            // Method 2: Try scrollIntoView on the last visible song item in playlist
+            const playlistShelf = document.querySelector('ytmusic-playlist-shelf-renderer');
+            const lastSongItem = playlistShelf ?
+                playlistShelf.querySelector('ytmusic-responsive-list-item-renderer:last-of-type') :
+                scrollContainer.querySelector('ytmusic-responsive-list-item-renderer:last-of-type');
             if (lastSongItem) {
                 lastSongItem.scrollIntoView({ 
                     behavior: 'smooth', 
                     block: 'end',
                     inline: 'nearest'
                 });
-                this.log('Scrolled last song item into view', 'debug');
+                this.log('Scrolled last playlist song item into view', 'debug');
             }
             
             // Method 3: Force scroll to bottom if we're close
@@ -296,15 +319,18 @@ class YouTubeMusicAutoLike {
                 this.log(`Scrolled window by ${scrollAmount}px`, 'debug');
             }
             
-            // Try scrolling to the last song element
-            const lastSongItem = document.querySelector('ytmusic-responsive-list-item-renderer:last-of-type');
+            // Try scrolling to the last playlist song element
+            const playlistShelf = document.querySelector('ytmusic-playlist-shelf-renderer');
+            const lastSongItem = playlistShelf ?
+                playlistShelf.querySelector('ytmusic-responsive-list-item-renderer:last-of-type') :
+                document.querySelector('ytmusic-responsive-list-item-renderer:last-of-type');
             if (lastSongItem) {
                 lastSongItem.scrollIntoView({ 
                     behavior: 'smooth', 
                     block: 'end',
                     inline: 'nearest'
                 });
-                this.log('Scrolled last song item into view (window)', 'debug');
+                this.log('Scrolled last playlist song item into view (window)', 'debug');
             }
         }
         
@@ -564,14 +590,27 @@ class YouTubeMusicAutoLike {
         const detectedButtons = this.getLikeButtons();
         console.log(`\n✓ Currently detected unliked buttons: ${detectedButtons.length}`);
         
-        // Show song containers
-        const songContainers = document.querySelectorAll('ytmusic-responsive-list-item-renderer');
-        console.log(`📄 Song containers: ${songContainers.length}`);
+        // Show playlist song containers and sample extracted titles
+        const playlistShelf = document.querySelector('ytmusic-playlist-shelf-renderer');
+        const songContainers = playlistShelf ? 
+            Array.from(playlistShelf.querySelectorAll('ytmusic-responsive-list-item-renderer')) :
+            Array.from(document.querySelectorAll('ytmusic-responsive-list-item-renderer'))
+                .filter(el => !el.closest('ytmusic-shelf-renderer'));
+        console.log(`📄 Playlist song containers: ${songContainers.length}`);
+        
+        if (songContainers.length > 0) {
+            console.log('\nSample song titles detected:');
+            songContainers.slice(0, 5).forEach((container, i) => {
+                const likeBtn = container.querySelector('button[aria-label="Like"], button');
+                const title = likeBtn ? this.getSongTitle(likeBtn) : 'No button found';
+                console.log(`  ${i + 1}: "${title}"`);
+            });
+        }
         
         console.log('========================\n');
         
         return {
-            totalButtons: document.querySelectorAll('button, tp-yt-paper-icon-button, yt-icon-button').length,
+            totalButtons: document.querySelectorAll('button').length,
             likeRelatedButtons: likeRelated.length,
             detectedLikeButtons: detectedButtons.length,
             songContainers: songContainers.length
