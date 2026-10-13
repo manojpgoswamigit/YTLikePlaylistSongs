@@ -40,7 +40,7 @@ A lightweight, zero-dependency browser script that automatically likes every son
 
 ---
 
-## 🎮 Console Controls
+## Console Controls
 
 While the script is running, the global `autoLiker` object exposes controls in your console:
 
@@ -152,4 +152,4 @@ Contributions, bug reports, and improvements are welcome!
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
